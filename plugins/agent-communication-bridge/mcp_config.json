@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "agent-communication-bridge": {
+      "command": "agent-communication-bridge",
+      "args": ["mcp", "start"]
+    }
+  }
+}

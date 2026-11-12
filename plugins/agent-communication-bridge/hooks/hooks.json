@@ -1,0 +1,28 @@
+{
+  "description": "Keeps the local registry running while a session is open, and reaps its entry when the session ends.",
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node -e \"const{spawnSync}=require('node:child_process'),w=process.platform==='win32';spawnSync(w?'cmd.exe':'agent-communication-bridge',w?['/d','/c','agent-communication-bridge','up']:['up'],{stdio:'ignore',windowsHide:true})\"",
+            "timeout": 15
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node -e \"const{spawnSync}=require('node:child_process'),w=process.platform==='win32';spawnSync(w?'cmd.exe':'agent-communication-bridge',w?['/d','/c','agent-communication-bridge','prune']:['prune'],{stdio:'ignore',windowsHide:true})\"",
+            "_comment": "3s, not more: Codex clamps SessionEnd hooks to 3s and warns about anything higher. A local prune is a couple of HTTP calls, so it fits.",
+            "timeout": 3
+          }
+        ]
+      }
+    ]
+  }
+}

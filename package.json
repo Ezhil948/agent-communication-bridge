@@ -1,0 +1,70 @@
+{
+  "name": "agent-communication-bridge",
+  "version": "1.0.0",
+  "description": "Local MCP server, registry, and hooks for messaging between Antigravity (agy), Codex, and OpenCode sessions",
+  "type": "module",
+  "bin": {
+    "agent-communication-bridge": "./dist/cli/index.js",
+    "acb": "./dist/cli/index.js"
+  },
+  "files": [
+    "dist",
+    "bin",
+    "plugins"
+  ],
+  "license": "MIT",
+  "author": "Ezhil948",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Ezhil948/agent-communication-bridge.git"
+  },
+  "homepage": "https://github.com/Ezhil948/agent-communication-bridge#readme",
+  "bugs": {
+    "url": "https://github.com/Ezhil948/agent-communication-bridge/issues"
+  },
+  "keywords": [
+    "mcp",
+    "mcp-server",
+    "model-context-protocol",
+    "ai-agents",
+    "multi-agent",
+    "agent-communication",
+    "agent-bridge",
+    "antigravity",
+    "codex",
+    "opencode",
+    "websocket",
+    "cli"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "tsc && node -e \"const fs=require('node:fs'),p=require('node:path');fs.mkdirSync('dist/client/opencode-plugin',{recursive:true});for(const f of ['agent-bridge.ts','tui.ts','package.json'])fs.copyFileSync(p.join('src/client/opencode-plugin',f),p.join('dist/client/opencode-plugin',f))\"",
+    "dev": "tsx src/cli/index.ts",
+    "start": "node dist/cli/index.js",
+    "clean": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\"",
+    "test": "vitest run",
+    "lint": "biome check src/",
+    "lint:fix": "biome check src/ --write"
+  },
+  "dependencies": {
+    "@clack/prompts": "^1.5.1",
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "chalk": "^5.3.0",
+    "commander": "^13.0.0",
+    "express": "^5.2.1",
+    "glob": "^11.0.0",
+    "ws": "^8.18.0",
+    "zod": "^3.25.0"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.4.11",
+    "@types/express": "^5.0.0",
+    "@types/node": "^22.0.0",
+    "@types/ws": "^8.5.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.7.0",
+    "vitest": "^4.1.4"
+  }
+}

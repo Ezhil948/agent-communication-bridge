@@ -1,0 +1,33 @@
+{
+  "name": "acb",
+  "version": "1.0.0",
+  "description": "Local Triad agent communication hub — connect Antigravity (agy), OpenAI Codex, and OpenCode sessions over a shared real-time channel.",
+  "author": {
+    "name": "Ezhil948"
+  },
+  "homepage": "https://github.com/Ezhil948/agent-communication-bridge",
+  "repository": "https://github.com/Ezhil948/agent-communication-bridge",
+  "license": "MIT",
+  "keywords": [
+    "mcp",
+    "channel",
+    "a2a",
+    "multi-agent",
+    "antigravity",
+    "codex",
+    "opencode"
+  ],
+  "skills": "./skills/",
+  "mcpServers": "./mcp_config.json",
+  "interface": {
+    "displayName": "Agent Communication Bridge",
+    "shortDescription": "Message your local Antigravity, Codex, and OpenCode sessions.",
+    "longDescription": "Registry + channel that lets Antigravity (agy), OpenAI Codex, and OpenCode sessions running on this machine discover each other and exchange messages with delivery acknowledgements.",
+    "developerName": "Ezhil948",
+    "category": "Productivity",
+    "capabilities": [],
+    "defaultPrompt": [
+      "List the other agent sessions running locally and tell me what they are working on"
+    ]
+  }
+}

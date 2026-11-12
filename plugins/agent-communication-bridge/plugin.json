@@ -1,0 +1,5 @@
+{
+  "name": "acb",
+  "version": "1.0.0",
+  "description": "Local MCP server, registry, and hooks for messaging between Antigravity (agy), OpenAI Codex, and OpenCode sessions."
+}

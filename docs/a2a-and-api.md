@@ -1,0 +1,343 @@
+# A2A y API
+
+## Resumen
+
+El sistema usa JSON-RPC 2.0 sobre HTTP y WebSocket. El modelo base de mensajes y tareas vive en:
+
+- [`src/types/a2a.ts`](../src/types/a2a.ts)
+- [`src/types/jsonrpc.ts`](../src/types/jsonrpc.ts)
+- [`src/types/messages.ts`](../src/types/messages.ts)
+
+## Agent API
+
+### `GET /.well-known/agent-card.json`
+
+Devuelve el `AgentCard` del agente (ruta de la spec A2A 0.3.0). La ruta legacy
+`/.well-known/agent.json` se mantiene como alias y devuelve lo mismo.
+
+Campos relevantes:
+
+- `name`
+- `description`
+- `url`
+- `version`
+- `protocolVersion` — versión A2A que habla el agente (`"0.3.0"`)
+- `preferredTransport` — transporte de `url` (`"JSONRPC"`)
+- `capabilities` — `streaming` es `false`: `message/stream` (SSE) no está implementado
+- `defaultInputModes`
+- `defaultOutputModes`
+- `skills`
+- extension local `x-agent-communication-bridge` con `agentId`, `projectPath`, `projectType`, `wsUrl`
+
+Ejemplo:
+
+```bash
+curl http://localhost:5001/.well-known/agent-card.json
+```
+
+### `POST /`
+
+Punto de entrada JSON-RPC 2.0.
+
+Ejemplo base:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": "req-1",
+  "method": "message/send",
+  "params": {
+    "message": {
+      "role": "user",
+      "parts": [
+        { "kind": "text", "text": "find payment endpoint" }
+      ]
+    }
+  }
+}
+```
+
+**Normalización `kind`/`type`:** la spec 0.3.0 etiqueta los Parts con `kind`;
+el código interno usa `type`. El servidor acepta cualquiera de las dos en la
+entrada y emite ambas en la salida, solo en posiciones conocidas de Parts
+(`message.parts`, `history[].parts`, `status.message.parts`,
+`artifacts[].parts`) — los payloads (`data`, `metadata`) nunca se tocan.
+
+### `GET /health`
+
+Devuelve estado operativo del agente.
+
+Respuesta típica:
+
+```json
+{
+  "ok": true,
+  "agentId": "uuid",
+  "projectName": "agent-communication-bridge",
+  "projectPath": "/ruta/al/proyecto",
+  "port": 5001,
+  "timestamp": "2026-03-18T00:00:00.000Z"
+}
+```
+
+### `WS /ws`
+
+Canal WebSocket para JSON-RPC.
+
+Comportamiento actual:
+
+- al conectar, el servidor envia un mensaje `agent.hello`
+- luego acepta mensajes JSON-RPC
+- responde por el mismo socket
+
+No hay streaming de tareas ya implementado por este canal.
+
+## Métodos JSON-RPC soportados
+
+### `message/send` (spec 0.3.0) y `tasks/send` (alias legacy)
+
+Ambos nombres invocan el mismo handler: crea una tarea, la marca como
+`working`, resuelve la skill y devuelve el `Task` final.
+
+Formas de params aceptadas (se honran ambas):
+
+- **Spec 0.3.0 (`MessageSendParams`)**: `taskId`/`contextId` viajan DENTRO de
+  `message`. Un `message.contextId` se copia al `Task` devuelto; un
+  `message.taskId` que apunte a un task en `input-required` **reanuda** ese task
+  (única vía spec para responder a un `awaitInput`) en vez de crear uno nuevo.
+- **Draft legacy (`TaskSendParams`)**: `id`/`contextId` a nivel superior.
+
+El `Task` devuelto cumple 0.3.0: lleva `kind: "task"` (discriminador
+Message/Task) y `contextId` siempre presente (cae al id del task si el cliente
+no mandó uno). Los `Message` generados por el servidor llevan `kind: "message"`
+y `messageId`.
+
+Entrada mínima:
+
+```json
+{
+  "message": {
+    "role": "user",
+    "parts": [
+      { "type": "text", "text": "search auth routes" }
+    ]
+  }
+}
+```
+
+Metadatos soportados:
+
+- `skillId`
+- `input`
+
+Si no se pasa `skillId`, el router intenta inferirlo por heurística:
+
+- `endpoint` / `route` / `api` -> `endpoint-find`
+- `search` / `find` / `grep` -> `code-query`
+- `file` / `list` -> `file-search`
+- `prompt` / `template` -> `prompt-execute`
+
+Respuesta:
+
+- `result` con un `Task`
+- si la skill completa bien, el `Task` queda `completed` con un `Artifact` `type=data`
+- si falla, el `Task` queda `failed` con mensaje de error
+
+Ejemplo `curl`:
+
+```bash
+curl -X POST http://localhost:5001/ \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0",
+    "id":"req-1",
+    "method":"message/send",
+    "params":{
+      "message":{"role":"user","parts":[{"type":"text","text":"find payment endpoint"}]},
+      "metadata":{"skillId":"endpoint-find","input":{"query":"payment"}}
+    }
+  }'
+```
+
+### `tasks/get`
+
+Consulta una tarea por `id`.
+
+Entrada:
+
+```json
+{ "id": "task-id" }
+```
+
+### `tasks/cancel`
+
+Marca una tarea como `canceled`.
+
+Entrada:
+
+```json
+{ "id": "task-id" }
+```
+
+### `agent.health`
+
+Devuelve metadatos de salud del agente, incluyendo skills registradas.
+
+### `agent.hello`
+
+Devuelve metadatos simples del agente; tambien se usa como anuncio al conectar por WebSocket.
+
+### `project.info`
+
+Devuelve:
+
+- `agentId`
+- `projectName`
+- `projectPath`
+- `projectType`
+- skills disponibles
+
+### `project.files`
+
+Lista archivos de un proyecto hasta cierta profundidad.
+
+Entrada:
+
+```json
+{ "depth": 2 }
+```
+
+Notas:
+
+- ignora `node_modules`, `.git`, `dist`, `.next`, `__pycache__`, `.venv`
+- limita a 50 entradas por nivel
+
+### `project.search`
+
+Hace un `code-query` contra el proyecto.
+
+Entrada:
+
+```json
+{
+  "query": "paymentRetry",
+  "fileGlob": "src/**/*.ts"
+}
+```
+
+## Registry API
+
+### `POST /agents`
+
+Registra un agente usando `AgentRegistration`.
+
+Campos:
+
+- `agentId`
+- `name`
+- `url`
+- `wsUrl`
+- `port`
+- `projectPath`
+- `projectName`
+- `projectType`
+- `card`
+- `registeredAt`
+
+### `DELETE /agents/:id`
+
+Desregistra un agente.
+
+### `POST /agents/:id/heartbeat`
+
+Actualiza heartbeat y marca al agente como saludable.
+
+### `GET /agents`
+
+Lista agentes. Soporta filtros por query string:
+
+- `skill`
+- `project`
+- `healthy`
+
+Ejemplo:
+
+```bash
+curl 'http://localhost:4999/agents?skill=endpoint-find&healthy=true'
+```
+
+### `GET /agents/:id`
+
+Devuelve un `RegistryEntry` concreto.
+
+### `GET /health`
+
+Devuelve salud del registry:
+
+```json
+{
+  "status": "ok",
+  "agents": 2,
+  "timestamp": "2026-03-18T00:00:00.000Z"
+}
+```
+
+### `POST /events`
+
+Recibe eventos de tareas enviados por agentes y los retransmite a los suscriptores via WebSocket.
+
+Payload esperado:
+
+```json
+{
+  "agentId": "uuid",
+  "agentName": "billing-api",
+  "taskId": "task-uuid",
+  "state": "completed",
+  "skillId": "endpoint-find",
+  "timestamp": "2026-03-18T00:00:00.000Z",
+  "payload": {}
+}
+```
+
+## Registry WebSocket
+
+Endpoint:
+
+```text
+ws://localhost:4999/ws
+```
+
+Eventos emitidos:
+
+```json
+{ "type": "snapshot", "agents": [] }
+{ "type": "agent.registered", "timestamp": "...", "data": {} }
+{ "type": "agent.deregistered", "timestamp": "...", "data": { "agentId": "..." } }
+{ "type": "agent.heartbeat", "timestamp": "...", "data": { "agentId": "...", "timestamp": "..." } }
+{ "type": "agent.unhealthy", "timestamp": "...", "data": { "agentId": "..." } }
+{ "type": "agent.removed", "timestamp": "...", "data": { "agentId": "..." } }
+{ "type": "task.update", "timestamp": "...", "data": {} }
+```
+
+## Errores JSON-RPC
+
+Códigos definidos:
+
+- `-32700` parse error
+- `-32600` invalid request
+- `-32601` method not found
+- `-32602` invalid params
+- `-32603` internal error
+- `-32000` task not found
+- `-32001` task not cancelable
+- `-32002` push notification not supported
+- `-32003` unsupported operation
+
+## Limitaciones conocidas
+
+- `message/stream` (SSE de la spec 0.3.0) no está implementado; el card anuncia `capabilities.streaming: false` para que los clientes spec usen `message/send`.
+- `tasks/sendSubscribe` esta declarado en tipos y cliente, pero no esta soportado realmente por el servidor.
+- `A2AClient.sendTaskSubscribe()` asume SSE, pero `AgentServer` no expone ese flujo hoy.
+- La respuesta de `message/send`/`tasks/send` devuelve el `Task` completo y no un stream incremental de artifacts.
+- `securitySchemes`/`security` del card no se emiten: el servidor no implementa auth todavía.
